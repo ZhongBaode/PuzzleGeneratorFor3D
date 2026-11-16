@@ -25,6 +25,8 @@ Open **http://127.0.0.1:4173**. The complete static app is in `dist/`. Serve tha
 
 This workspace also contains a locally bootstrapped npm for the Codex environment, which has Node but no `npm` command on PATH. If using that same environment, substitute `node .tools/package/bin/npm-cli.js` for `npm` in these commands. A normal Node.js installation does not need this workaround.
 
+After pulling or switching branches, run `npm install` before starting Vite so local dependencies match `package-lock.json`. If Vite reports `Failed to resolve import "three"` from `src/image-viewer.ts`, the Three.js dependency is missing from the local installation: run `npm install`, restart `npm run dev`, and refresh the browser. Both `three` and `@types/three` are already declared in the dependency files.
+
 ## Host on GitHub Pages
 
 1. Create a GitHub repository and upload/commit the project source, including `package-lock.json` and `.github/workflows/pages.yml`. Exclude `node_modules`, `.tools`, `.npm-cache`, `artifacts`, and `dist` (already covered by `.gitignore`).

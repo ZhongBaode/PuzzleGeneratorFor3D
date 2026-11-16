@@ -1,5 +1,54 @@
 import { test, expect } from '@playwright/test';
 
+test('unavailable controls hide and optional switches retain their values', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.locator('#status-text')).toHaveText('Geometry ready');
+  await expect(page.locator('#jitter')).toBeHidden();
+  await expect(page.locator('#pieceSize')).toBeHidden();
+  await page.locator('#sizingMode').selectOption('size');
+  await expect(page.locator('#count')).toBeHidden();
+  await expect(page.locator('[data-count="25"]')).toBeHidden();
+  await expect(page.locator('#pieceSize')).toBeVisible();
+  await page.locator('#seamCurvature').fill('2');
+  await page.locator('#curvatureEnabled').uncheck();
+  await expect(page.locator('#seamCurvature')).toBeHidden();
+  await expect(page.locator('#curvatureEnabled')).toBeVisible();
+  await expect(page.locator('#status-text')).toHaveText('Geometry ready');
+  await page.reload();
+  await expect(page.locator('#seamCurvature')).toBeHidden();
+  await page.locator('#curvatureEnabled').check();
+  await expect(page.locator('#seamCurvature')).toHaveValue('2');
+  await page.locator('#randomTabs').check();
+  await expect(page.locator('#tabSize')).toBeHidden();
+  await expect(page.locator('#tabMin')).toBeVisible();
+  await page.locator('#randomTabs').uncheck();
+  await expect(page.locator('#tabMin')).toBeHidden();
+  await expect(page.locator('#randomTabs')).toBeVisible();
+});
+
+test('target piece size updates counts and survives refresh', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.locator('#status-text')).toHaveText('Geometry ready');
+  await page.locator('#sizingMode').selectOption('size');
+  await expect(page.locator('#stat-count')).toHaveText('20');
+  await expect(page.locator('#count')).toBeDisabled();
+  await expect(page.locator('#rows')).toBeDisabled();
+  await page.locator('#pieceSize').fill('50');
+  await expect(page.locator('#stat-count')).toHaveText('12');
+  await expect(page.locator('#piece-size-hint')).toContainText('50.00 × 53.33');
+  await page.reload();
+  await expect(page.locator('#stat-count')).toHaveText('12');
+  await expect(page.locator('#pieceSize')).toHaveValue('50');
+  await page.locator('#pieceSize').fill('1');
+  await expect(page.locator('#error')).toContainText('at most 200');
+  await expect(page.locator('#download')).toBeDisabled();
+  await page.locator('[data-reset="pieceSize"]').click();
+  await expect(page.locator('#stat-count')).toHaveText('20');
+  await expect(page.locator('#download')).toBeEnabled();
+  await page.locator('#sizingMode').selectOption('count');
+  await expect(page.locator('#count')).toBeEnabled();
+});
+
 test('seam curvature works independently of locked grid jitter and survives refresh',async({page})=>{
   await page.goto('./');await expect(page.locator('#status-text')).toHaveText('Geometry ready');
   await expect(page.locator('#jitter')).toBeDisabled();await expect(page.locator('#seamCurvature')).toBeEnabled();

@@ -32,6 +32,9 @@ $('#app').innerHTML = `
       <details open class="section"><summary><span class="section-index">01</span> Pattern <span class="chevron">⌄</span></summary><div class="section-body">
         <div class="two-col">${number('width', 'Width', 10, 2000, 0.1, 'mm')}${number('height', 'Height', 10, 2000, 0.1, 'mm')}</div>
         ${toggle('aspectLock', 'Lock aspect ratio')}
+        ${select('sizingMode', 'Choose pieces by', [['count', 'Piece count'], ['size', 'Target piece size']])}
+        ${number('pieceSize', 'Target piece side', 1, 2000, 0.5, 'mm')}
+        <p class="hint" id="piece-size-hint"></p>
         <div class="field"><span>Piece count <small>requested</small></span><div class="count-chips">${[4, 9, 16, 25, 36, 49, 64, 100].map(n => `<button type="button" data-count="${n}">${n}</button>`).join('')}</div></div>
         ${number('count', 'Custom count', 1, 200)}
         ${select('geometry', 'Piece geometry', [['rectangular', 'Rectangular'], ['voronoi', 'Voronoi']])}
@@ -40,10 +43,12 @@ $('#app').innerHTML = `
         <p class="hint" id="grid-hint"></p>
         ${select('distribution', 'Point distribution', [['grid', 'Grid'], ['poisson', 'Poisson disk']])}
         <p class="hint" id="distribution-hint"></p>
+        ${toggle('jitterEnabled', 'Enable grid jitter')}
         ${number('jitter', 'Grid jitter', 0, 0.8, 0.01)}
         <p class="hint" id="jitter-hint"></p>
+        ${toggle('curvatureEnabled', 'Enable seam curvature')}
         ${number('seamCurvature', 'Seam curvature', 0, 20, 0.1, 'mm')}
-        <p class="hint">Bends internal seams independently of grid jitter, including rectangular and Poisson patterns. 0 keeps straight seams. Bends are seeded and limited to available space; the outer border stays straight.</p>
+        <p class="hint" id="curvature-description">Bends internal seams independently of grid jitter, including rectangular and Poisson patterns. 0 keeps straight seams. Bends are seeded and limited to available space; the outer border stays straight.</p>
         <p class="hint" id="curve-hint"></p>
         <label class="field"><span>Random seed <small>repeatable by design</small></span><div class="input-action"><input id="seed" data-setting="seed" type="text" maxlength="120" spellcheck="false" /><button id="new-seed" title="New seed" aria-label="New seed">${icon('shuffle')}</button></div></label>
       </div></details>
@@ -140,15 +145,23 @@ function syncControls() {
   for (const chip of document.querySelectorAll<HTMLButtonElement>('[data-count]')) { chip.classList.toggle('active', +chip.dataset.count! === settings.count); chip.setAttribute('aria-pressed', String(+chip.dataset.count! === settings.count)); }
   const rect = settings.geometry === 'rectangular', grid = settings.distribution === 'grid';
   $<HTMLSelectElement>('#distribution').disabled = rect;
-  $<HTMLSelectElement>('#gridMode').disabled = !rect;
-  for (const k of ['rows', 'columns']) $<HTMLInputElement>(`#${k}`).disabled = !rect || settings.gridMode === 'auto';
-  $<HTMLInputElement>('#jitter').disabled = rect || !grid;
+  const bySize = settings.sizingMode === 'size';
+  $<HTMLInputElement>('#pieceSize').disabled = !bySize;
+  $<HTMLInputElement>('#count').disabled = bySize;
+  for (const chip of document.querySelectorAll<HTMLButtonElement>('[data-count]')) chip.disabled = bySize;
+  $<HTMLSelectElement>('#gridMode').disabled = !rect || bySize;
+  for (const k of ['rows', 'columns']) $<HTMLInputElement>(`#${k}`).disabled = !rect || settings.gridMode === 'auto' || bySize;
+  $<HTMLInputElement>('#jitterEnabled').disabled = rect || !grid;
+  $<HTMLInputElement>('#jitter').disabled = rect || !grid || !settings.jitterEnabled;
+  $<HTMLInputElement>('#seamCurvature').disabled = !settings.curvatureEnabled;
   const l = layout(settings);
-  if (rect && settings.gridMode === 'auto') {
+  $('#piece-size-hint').textContent = bySize ? `${l.rows} rows × ${l.columns} columns = ${l.rows * l.columns} pieces. Base size: ${(settings.width / l.columns).toFixed(2)} × ${(settings.height / l.rows).toFixed(2)} mm. Each dimension is divided by the target and rounded to the nearest whole piece (minimum 1). Tabs and clearance change the outline; Voronoi sizes vary.` : 'Choose target piece size to calculate the count automatically. Size describes the base cell before tabs and clearance.';
+  if (bySize) $<HTMLInputElement>('#count').value = String(l.rows * l.columns);
+  if (rect && (settings.gridMode === 'auto' || bySize)) {
     $<HTMLInputElement>('#rows').value = String(l.rows);
     $<HTMLInputElement>('#columns').value = String(l.columns);
   }
-  $('#grid-hint').textContent = rect ? `${l.rows} rows × ${l.columns} columns = ${l.rows * l.columns} actual pieces. ${settings.gridMode === 'manual' ? 'Custom layout takes priority over requested count.' : 'Select custom layout to edit rows and columns.'}` : 'Row/column controls apply to rectangular geometry. Voronoi uses the exact requested point count.';
+  $('#grid-hint').textContent = bySize ? 'Rows, columns, and count are calculated from target piece size. Switch to Piece count to edit these controls.' : rect ? `${l.rows} rows × ${l.columns} columns = ${l.rows * l.columns} actual pieces. ${settings.gridMode === 'manual' ? 'Custom layout takes priority over requested count.' : 'Select custom layout to edit rows and columns.'}` : 'Row/column controls apply to rectangular geometry. Voronoi uses the exact requested point count.';
   $('#distribution-hint').textContent = rect ? 'Point distribution is used only by Voronoi geometry.' : grid ? 'Seed points in rows, displaced by the grid jitter below.' : 'Seeded random points with a minimum-distance exclusion radius.';
   $('#jitter-hint').textContent = rect ? 'Disabled to preserve the row/column layout. Use Seam curvature to bend its seams.' : !grid ? 'Jitter applies to grid seed points, not Poisson disk.' : '0% gives regular grid points; 80% allows ±40% of cell spacing. Custom counts use balanced rows.';
   const noTabs = settings.tabStyle === 'none';
@@ -172,6 +185,21 @@ function updateExportControls() {
   $<HTMLButtonElement>('#download').disabled = !valid || !!problem;
 }
 function syncNumericControls() {
+  // Hide the whole field (including its slider/reset), keeping available switches visible.
+  for (const input of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-setting]')) {
+    const field = input.closest<HTMLElement>('.field, .toggle');
+    if (field) field.hidden = input.disabled;
+  }
+  document.querySelector<HTMLElement>('.count-chips')!.parentElement!.hidden = settings.sizingMode === 'size';
+  for (const row of document.querySelectorAll<HTMLElement>('.two-col')) {
+    if (row.querySelector('[data-setting]')) row.hidden = [...row.querySelectorAll<HTMLElement>(':scope > .field')].every(field => field.hidden);
+  }
+  $('#distribution-hint').hidden = settings.geometry === 'rectangular';
+  $('#jitter-hint').hidden = $<HTMLInputElement>('#jitter').disabled;
+  $('#curvature-description').hidden = !settings.curvatureEnabled;
+  $('#curve-hint').hidden = !settings.curvatureEnabled;
+  $('#tab-limit-hint').hidden = settings.tabStyle === 'none';
+  $('#random-range').hidden = settings.tabStyle === 'none' || !settings.randomTabs;
   $('#custom-fit-values').hidden = !settings.customFits;
   for (const slider of document.querySelectorAll<HTMLInputElement>('[data-slider]')) {
     const key = slider.dataset.slider as keyof Settings;
@@ -313,7 +341,7 @@ for (const input of document.querySelectorAll<HTMLInputElement | HTMLSelectEleme
   if (k === 'width' && settings.aspectLock) $<HTMLInputElement>('#height').value = String(settings.height);
   if (k === 'height' && settings.aspectLock) $<HTMLInputElement>('#width').value = String(settings.width);
   if (!['width', 'height', 'seed', 'count', 'rows', 'columns', 'tabSize', 'tabMin', 'tabMax', 'clearance', 'strokeWidth'].includes(k)) syncControls();
-  if (['count', 'rows', 'columns'].includes(k) && Number.isFinite(value)) { const active = document.activeElement; syncControls(); (active as HTMLElement)?.focus(); }
+  if (['count', 'rows', 'columns', 'pieceSize', 'width', 'height'].includes(k) && Number.isFinite(value)) { const active = document.activeElement; syncControls(); (active as HTMLElement)?.focus(); }
   if (visualKeys.includes(k)) {
     try {
       validateSettings(settings);

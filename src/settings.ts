@@ -1,8 +1,10 @@
 export interface Settings {
   width: number; height: number; aspectLock: boolean;
   count: number; rows: number; columns: number; gridMode: 'auto' | 'manual';
+  sizingMode: 'count' | 'size'; pieceSize: number;
   distribution: 'grid' | 'poisson'; geometry: 'rectangular' | 'voronoi';
   seed: string; jitter: number; seamCurvature: number;
+  jitterEnabled: boolean; curvatureEnabled: boolean;
   tabStyle: 'jigsaw' | 'rectangular' | 'triangular' | 'none'; tabSize: number;
   randomTabs: boolean; tabMin: number; tabMax: number;
   clearance: number; strokeWidth: number;
@@ -15,7 +17,9 @@ export interface Settings {
 export const defaults: Settings = {
   width: 200, height: 160, aspectLock: false,
   count: 25, rows: 5, columns: 5, gridMode: 'auto',
+  sizingMode: 'count', pieceSize: 40,
   distribution: 'grid', geometry: 'rectangular', seed: 'foundry-2026', jitter: 0.25, seamCurvature: 0,
+  jitterEnabled: true, curvatureEnabled: true,
   tabStyle: 'rectangular', tabSize: 4, randomTabs: false, tabMin: 2, tabMax: 5,
   clearance: 0.2, strokeWidth: 0.25,
   autoClearance: true, customFits: false, fitSuperTight: 0.05, fitTight: 0.15, fitLoose: 0.3,
@@ -28,6 +32,7 @@ export function validateSettings(value: unknown): Settings {
   const s = { ...defaults, ...Object.fromEntries(Object.keys(defaults).filter(k => k in value).map(k => [k, (value as Record<string, unknown>)[k]])) } as Settings;
   const ranges: Partial<Record<keyof Settings, [number, number]>> = {
     width: [10, 2000], height: [10, 2000], count: [1, 200], rows: [1, 30], columns: [1, 30],
+    pieceSize: [1, 2000],
     jitter: [0, 0.8], seamCurvature: [0, 20], tabSize: [0.5, 100], tabMin: [0.5, 100], tabMax: [0.5, 100],
     clearance: [0, 3], strokeWidth: [0.01, 3],
     fitSuperTight: [0, 3], fitTight: [0, 3], fitLoose: [0, 3],
@@ -47,12 +52,23 @@ export function validateSettings(value: unknown): Settings {
   if (typeof s.seed !== 'string' || !s.seed.trim() || s.seed.length > 120) throw new Error('Enter a seed of 1–120 characters.');
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/.test(s.seed)) throw new Error('Seed contains a control character that SVG cannot encode. Use printable text.');
   if (s.randomTabs && s.tabMin > s.tabMax) throw new Error('Minimum tab size must be no larger than maximum tab size.');
-  if (s.rows * s.columns > 200 && s.gridMode === 'manual') throw new Error('Use at most 200 pieces in a manual grid.');
+  if (!['count', 'size'].includes(s.sizingMode)) throw new Error('Invalid sizing mode.');
+  for (const key of ['jitterEnabled', 'curvatureEnabled'] as const)
+    if (typeof s[key] !== 'boolean') throw new Error(`Invalid ${key}.`);
+  if (s.sizingMode === 'size') {
+    const grid = layout(s);
+    if (grid.rows * grid.columns > 200) throw new Error(`This piece size needs ${grid.rows * grid.columns} pieces. Increase the piece size to use at most 200 pieces.`);
+    s.count = grid.rows * grid.columns;
+  } else if (s.rows * s.columns > 200 && s.gridMode === 'manual') throw new Error('Use at most 200 pieces in a manual grid.');
   return s;
 }
 
 // The count is a request; manual grids deliberately retain their row/column structure.
 export function layout(s: Settings) {
+  if (s.sizingMode === 'size') return {
+    rows: Math.max(1, Math.round(s.height / s.pieceSize)),
+    columns: Math.max(1, Math.round(s.width / s.pieceSize)),
+  };
   if (s.gridMode === 'manual') return { rows: s.rows, columns: s.columns };
   const rows = Math.max(1, Math.floor(Math.sqrt(s.count)));
   return { rows, columns: Math.ceil(s.count / rows) };

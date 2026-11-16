@@ -119,3 +119,9 @@ Browser tests run against installed Google Chrome and cover downloads/XML validi
 - `.github/workflows/pages.yml` — test/build/deploy workflow.
 
 Third-party geometry dependencies: [D3 Delaunay (ISC)](https://github.com/d3/d3-delaunay) and [ClipperLib (Boost Software License)](https://github.com/junmer/clipper-lib).
+# Target piece size
+
+The settings panel hides controls that do not apply to the current mode. Grid jitter and seam curvature have enable switches: turning an effect off hides its fields and removes the effect while retaining its values for later. Random tab sizes and custom fit suggestions likewise keep their switches visible while their optional fields are hidden. These switches are saved in presets.
+
+Under Pattern, set **Choose pieces by → Target piece size** and enter a side length in millimeters. Rows and columns are calculated by dividing the canvas height and width by this length and rounding each to the nearest whole number (minimum one). For example, 200 × 160 mm with a 40 mm target gives 5 × 4 = 20 pieces. The canvas dimensions stay exact; the displayed base cell size shows any rounding adjustment. Tabs and clearance change the final outline. Voronoi uses the calculated count, with varying individual piece sizes. Requests above 200 pieces show an error; increase the target size. Presets retain this option.
+

@@ -5,6 +5,23 @@ import { defaults, starterPresets, validateSettings } from '../src/settings';
 import { cuttingMask, exportSvg, pathData, svgFilename } from '../src/svg';
 import { parsePresets } from '../src/presets';
 
+test('target piece size calculates count, preserves dimensions, and rejects excessive grids', () => {
+  for (const geometry of ['rectangular', 'voronoi'] as const) for (const distribution of ['grid', 'poisson'] as const) {
+    const s = { ...defaults, sizingMode: 'size' as const, pieceSize: 40, width: 200, height: 160, geometry, distribution, tabStyle: 'none' as const };
+    const p = generate(s);
+    assert.equal(p.pieces.length, 20);
+    assert.equal(p.settings.count, 20);
+    assert.equal(p.settings.width, 200); assert.equal(p.settings.height, 160);
+    assert.deepEqual(p.edges, generate(s).edges);
+  }
+  const p = generate({ ...defaults, sizingMode: 'size', pieceSize: 31, width: 100, height: 80, tabStyle: 'none' });
+  assert.equal(p.columns, 3); assert.equal(p.rows, 3); assert.equal(p.pieces.length, 9);
+  assert.throws(() => validateSettings({ ...defaults, sizingMode: 'size', pieceSize: 1 }), /at most 200/);
+  assert.equal(validateSettings({ ...defaults, sizingMode: 'size', pieceSize: 2000 }).count, 1);
+  const restored = parsePresets({ version: 1, presets: [{ id: 'size-test', name: 'Size test', settings: p.settings }] });
+  assert.equal(restored[0].settings.pieceSize, 31); assert.equal(restored[0].settings.sizingMode, 'size');
+});
+
 test('curved shared seams stay reproducible, complementary, clipped and exportable',()=>{
   for(const base of [defaults,starterPresets[1].settings,starterPresets[2].settings])for(const tabStyle of ['none','jigsaw'] as const){
     const s={...base,count:9,tabStyle,seamCurvature:2};

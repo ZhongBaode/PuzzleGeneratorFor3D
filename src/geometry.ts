@@ -73,13 +73,13 @@ function basePolygons(s: Settings): { polygons: Point[][]; rows: number; columns
   if (s.distribution === 'poisson') points = poissonPoints(s.count, s.width, s.height, random);
   else {
     points = [];
-    const nr = Math.max(1, Math.floor(Math.sqrt(s.count)));
+    const nr = s.sizingMode === 'size' ? rows : Math.max(1, Math.floor(Math.sqrt(s.count)));
     // Balanced rows keep the requested point count, including prime counts.
     for (let r = 0; r < nr; r++) {
       const nc = Math.floor(s.count / nr) + (r < s.count % nr ? 1 : 0);
       for (let c = 0; c < nc; c++) points.push([
-        (c + 0.5 + (random() - 0.5) * s.jitter) * s.width / nc,
-        (r + 0.5 + (random() - 0.5) * s.jitter) * s.height / nr,
+        (c + 0.5 + (random() - 0.5) * (s.jitterEnabled ? s.jitter : 0)) * s.width / nc,
+        (r + 0.5 + (random() - 0.5) * (s.jitterEnabled ? s.jitter : 0)) * s.height / nr,
       ]);
     }
   }
@@ -315,7 +315,7 @@ function generatePattern(input: Settings, context: { cells?: Point[][] }): Patte
     e.points = tabPoints(e, e.size, s.tabStyle, random() < 0.5 ? -1 : 1);
   }
   if (tabIssues.length) throw new GeometryIssue(tabIssues[0].message, [...new Set(tabIssues.flatMap(issue => issue.affected))], tabIssues[0].parameter);
-  if(s.seamCurvature>0) {
+  if(s.curvatureEnabled && s.seamCurvature>0) {
     let limited=0;
     for(const edge of edges.filter(e=>e.cells.length===2)) {
       const random=seededRandom(`${s.seed}:curve:${edge.id}`);

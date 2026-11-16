@@ -11,3 +11,4 @@
 .custom-fit-values { display:flex; flex-direction:column; gap:12px; padding:12px; border:1px solid #d5ddcc; border-radius:5px; }
 .field input[aria-invalid=true] { border-color:#b42318; background:#fff0ee; }
 @media(max-width:700px) { .numeric-input button { top:6px; } }
+.settings-panel [hidden] { display: none !important; }

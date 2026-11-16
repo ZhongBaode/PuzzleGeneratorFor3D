@@ -1,0 +1,97 @@
+import { test, expect, type Page } from '@playwright/test';
+import { unzipSync, strFromU8 } from 'fflate';
+import { readFile } from 'node:fs/promises';
+async function upload(page: Page) {
+  await page.goto('./');
+  await page.locator('#image-workshop').click();
+  const image = await page.evaluate(() => {
+    const c = document.createElement('canvas'); c.width=160;c.height=90;const ctx=c.getContext('2d')!;
+    ['#FFFFFF','#000000','#C12E1F','#0A2989'].forEach((color,i)=>{ctx.fillStyle=color;ctx.fillRect(i*40,0,40,90);});
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  await page.locator('#iw-file').setInputFiles({name:'four-colors.png',mimeType:'image/png',buffer:Buffer.from(image,'base64')});
+  await expect(page.locator('#iw-status')).toHaveText('Image ready.');
+}
+test('image to verified multicolor 3MF with explicit confirmations and editable palette', async ({page}) => {
+  test.setTimeout(90000);
+  await upload(page);
+  await expect(page.locator('#iw-nozzle-4')).toHaveAttribute('aria-pressed','true');
+  await page.locator('#iw-size').selectOption('128');
+  await page.locator('#iw-to-colors').click();
+  await expect(page.locator('#iw-to-download')).toHaveCount(0);
+  await expect(page.locator('input[type=color]')).toHaveCount(4);
+  await page.locator('#iw-swatch-0').selectOption('#F4EE2A');
+  await expect(page.locator('#iw-color-0')).toHaveValue('#f4ee2a');
+  await page.locator('#iw-backing').selectOption('2');
+  await page.locator('#iw-to-model').click();
+  await expect(page.locator('#iw-to-cuts')).toBeVisible({timeout:30000});
+  await expect(page.locator('.iw-controls')).toContainText('7 backing layers');
+  await expect(page.locator('.iw-controls')).toContainText('AMS 3');
+  await page.locator('#iw-back').click();
+  await expect(page.locator('#iw-color-0')).toHaveValue('#f4ee2a');
+  await page.locator('#iw-to-model').click(); await page.locator('#iw-to-cuts').click();
+  await page.locator('#iw-count').fill('4');
+  await expect(page.locator('#iw-to-download')).toBeDisabled();
+  await page.locator('#iw-generate-cuts').click();
+  await expect(page.locator('#iw-to-download')).toBeEnabled();
+  await expect(page.locator('#iw-cut-summary')).toContainText('4 actual pieces');
+  await page.locator('#iw-clearance').fill('0.25');
+  await expect(page.locator('#iw-to-download')).toBeDisabled();
+  await page.locator('#iw-generate-cuts').click();
+  await expect(page.locator('#iw-to-download')).toBeEnabled();
+  await page.locator('#iw-to-download').click();
+  await expect(page.locator('#iw-download')).toBeVisible({timeout:30000});
+  await expect(page.locator('.iw-controls')).toContainText('2.25 mm');
+  const event=page.waitForEvent('download');await page.locator('#iw-download').click();const download=await event;
+  expect(download.suggestedFilename()).toBe('image-puzzle.3mf');
+  const files=unzipSync(await readFile((await download.path())!));
+  const manifest=JSON.parse(strFromU8(files['Metadata/puzzle.json']));
+  expect(manifest.backingSlot).toBe(3);expect(manifest.pieceIds).toHaveLength(4);expect(manifest.clearance).toBe(.25);
+  const xml=strFromU8(files['3D/3dmodel.model']);
+  const parsed=await page.evaluate(xml=>{const doc=new DOMParser().parseFromString(xml,'application/xml');return {errors:doc.querySelectorAll('parsererror').length,items:doc.querySelectorAll('item').length,bases:doc.querySelectorAll('base').length,meshes:doc.querySelectorAll('mesh').length};},xml);
+  expect(parsed.errors).toBe(0);expect(parsed.items).toBe(4);expect(parsed.bases).toBe(4);expect(parsed.meshes).toBeGreaterThan(4);
+  const objEvent=page.waitForEvent('download');await page.locator('#iw-download-obj').click();const objDownload=await objEvent;
+  expect(objDownload.suggestedFilename()).toBe('image-puzzle-obj.zip');
+  const objFiles=unzipSync(await readFile((await objDownload.path())!));expect(Object.keys(objFiles)).toContain('image-puzzle-plate-1.mtl');
+  await page.screenshot({path:'artifacts/image-puzzle-final.png',fullPage:true});
+  await page.locator('#iw-close').click();await expect(page.locator('.image-workshop')).toHaveCount(0);
+  await expect(page.locator('#download')).toBeEnabled();
+});
+test('manual palette beta, custom crop, fine nozzle and assembled output',async({page})=>{
+  test.setTimeout(90000); await upload(page);
+  await page.locator('#iw-size').selectOption('custom');
+  await expect(page.locator('#iw-custom')).toContainText('lose fine image details');
+  await page.locator('#iw-width').fill('96'); await page.locator('#iw-nozzle-2').click();
+  await expect(page.locator('#iw-layer-info')).toContainText('1.0 mm thick');
+  await page.locator('#iw-zoom').fill('1.5');await page.locator('#iw-crop-x').fill('0.2');
+  await page.locator('#iw-to-colors').click();await page.locator('#iw-auto').uncheck();
+  await page.locator('#iw-remap').click();await page.locator('#iw-to-model').click();await page.locator('#iw-to-cuts').click();
+  await page.locator('#iw-count').fill('4');await page.locator('#iw-tabs').selectOption('jigsaw');await page.locator('#iw-explode').uncheck();
+  await page.locator('#iw-generate-cuts').click();await expect(page.locator('#iw-to-download')).toBeEnabled();
+  await page.locator('#iw-to-download').click();await expect(page.locator('#iw-download')).toBeVisible({timeout:30000});
+  await expect(page.locator('.iw-controls')).toContainText('explosion off');
+  const event=page.waitForEvent('download');await page.locator('#iw-download').click();const download=await event;
+  const files=unzipSync(await readFile((await download.path())!));const manifest=JSON.parse(strFromU8(files['Metadata/puzzle.json']));
+  expect(manifest.nozzle).toBe(.2);expect(manifest.layerHeight).toBe(.1);expect(manifest.width).toBe(96);expect(manifest.height).toBe(54);expect(manifest.extraSpacing).toBe(0);
+});
+test('invalid images and custom sizes are recoverable, closing cancels the workflow',async({page})=>{
+  await upload(page);await page.locator('#iw-size').selectOption('custom');await page.locator('#iw-width').fill('300');
+  await page.locator('#iw-to-colors').click();await expect(page.locator('#iw-error')).toContainText('32 to 256');
+  await page.locator('#iw-file').setInputFiles({name:'broken.png',mimeType:'image/png',buffer:Buffer.from('broken')});
+  await expect(page.locator('#iw-error')).toBeVisible();
+  await page.keyboard.press('Escape');await expect(page.locator('.image-workshop')).toHaveCount(0);
+  await page.locator('#image-workshop').click();await expect(page.locator('#iw-to-colors')).toBeDisabled();
+});
+test('mobile workshop fits the screen and Back cancels model generation',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await upload(page);
+  expect(await page.locator('.image-workshop').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.locator('#iw-to-colors').click();
+  await page.evaluate(()=>{
+    document.querySelector<HTMLButtonElement>('#iw-to-model')!.click();
+    document.querySelector<HTMLButtonElement>('#iw-back')!.click();
+  });
+  await expect(page.locator('#iw-to-colors')).toBeEnabled();
+  await expect(page.locator('#iw-file-name')).toHaveText('four-colors.png');
+  await page.locator('#iw-to-colors').click();await expect(page.locator('#iw-to-model')).toBeEnabled();
+});

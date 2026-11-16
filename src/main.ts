@@ -24,7 +24,7 @@ const select = (key: keyof Settings, label: string, options: [string, string][])
 $('#app').innerHTML = `
   <header class="app-header">
     <a class="brand" href="./" aria-label="Puzzle Foundry home"><span class="brand-mark"><svg viewBox="0 0 32 32" fill="none"><path d="M5 5h8v4h6V5h8v8h-4v6h4v8h-8v-4h-6v4H5v-8h4v-6H5z" stroke="currentColor" stroke-width="2"/></svg></span><span>Puzzle Foundry<small>THE SVG PATTERN WORKSHOP</small></span></a>
-    <div class="header-actions"><span class="local-badge"><i></i> Runs on your device</span><button id="guide" class="icon-button" title="Setup and Bambu Studio guide" aria-label="Open usage guide">${icon('help')}</button><button id="download" class="primary" disabled>${icon('download')}<span>Download SVG</span></button></div>
+    <div class="header-actions"><button id="image-workshop" class="secondary" aria-label="Open image to 3D puzzle workshop">Image → 3D<span class="image-entry-detail"> puzzle</span></button><span class="local-badge"><i></i> Runs on your device</span><button id="guide" class="icon-button" title="Setup and Bambu Studio guide" aria-label="Open usage guide">${icon('help')}</button><button id="download" class="primary" disabled>${icon('download')}<span>Download SVG</span></button></div>
   </header>
   <main class="workspace">
     <aside class="settings-panel" aria-label="Puzzle settings">
@@ -409,3 +409,5 @@ for (const id of ['guide', 'guide-link']) $(`#${id}`).addEventListener('click', 
 for (const id of ['close-guide', 'close-guide-bottom']) $(`#${id}`).addEventListener('click', () => $<HTMLDialogElement>('#help-dialog').close());
 syncControls(); refreshPresets(); schedule();
 if (storageWarning) toast(storageWarning);
+
+$('#image-workshop').addEventListener('click', async () => { const { openImageWorkshop } = await import('./image-workshop'); openImageWorkshop({ ...settings }); });
